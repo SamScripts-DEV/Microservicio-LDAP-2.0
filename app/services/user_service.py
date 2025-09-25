@@ -34,8 +34,6 @@ class UserService:
             "sn": user.lastName,
             "mail": user.email,
             "employeeNumber": user.id,
-            "rol_global" : [],
-            "rol_local" : [],
         }
         if hasattr(user, 'active'):
             attrs["description"] = "ACTIVE" if user.active else "INACTIVE"

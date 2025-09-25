@@ -45,7 +45,7 @@ class RoleService:
                         self._assign_role_to_user(user_dn, "rol_global", role_assigment.rol_global)
 
                     if role_assigment.rol_local:
-                        self._assign_role_to_user(user_dn, "rol_local", role_assigment.rol_local)
+                        self._assign_role_to_user(user_dn, "rol_local", role_assigment.rol_local, area=role_assigment.area)
 
                     results.append({
                         "email": email,
@@ -68,6 +68,14 @@ class RoleService:
         except Exception as e:
             logger.error(f"Error in role assignment: {e}")
             raise
+
+
+    
+
+
+
+
+
 
     def _validate_user_area(self, user_dn: str, required_area: str) -> bool:
         try:
@@ -101,22 +109,19 @@ class RoleService:
             logger.error(f"Error finding user DN for {email}: {e}")
             return None
 
-    def _assign_role_to_user(self, user_dn: str, role_type: str, role_name: str):
-        try:
-            current_roles = self._get_user_roles(user_dn, role_type)
+    def _assign_role_to_user(self, user_dn: str, role_type: str, role_name: str, area: Optional[str] = None):
+        group_dn = self._get_role_group_dn(role_type, role_name, area)
+        self._ensure_role_group(group_dn)
 
-            if role_name in current_roles:
-                logger.info(f"Role {role_name} already exists for user {user_dn}")
-                return
-            current_roles.append(role_name)
+        entries = self.ldap.search(base_dn=group_dn, search_filter="(objectClass=groupOfNames)", search_scope='BASE')
+        if entries:
+            group_entry = entries[0]
+            members = set(group_entry.member.values) if hasattr(group_entry, 'member') else set()
+            if user_dn not in members:
+                members.add(user_dn)
+                self.ldap.modify_entry(group_dn, {"member": list(members)})
 
-            changes = {role_type: (MODIFY_REPLACE, current_roles)}
-            self.ldap.modify_entry(user_dn, changes)
-            logger.success(f"Role {role_name} assigned to user {user_dn}")
 
-        except Exception as e:
-            logger.error(f"Error assigning role {role_name} to user {user_dn}: {e}")
-            raise
     
     def _get_user_roles(self, user_dn: str, role_type: str) -> List[str]:
         try:
@@ -134,47 +139,57 @@ class RoleService:
             logger.error(f"Error getting user roles for {user_dn}: {e}")
             return []
         
-    def get_user_roles(self, email: str) -> Dict[str, Any]:
-        try:
-            user_dn = self._find_user_dn(email)
-            if not user_dn:
-                return {
-                    "rol_global": [],
-                    "rol_local": []
+    def get_user_roles(self, email: str) -> dict:
+        user_dn = self._find_user_dn(email)
+        if not user_dn:
+            return {"roles": []}
+
+        search_filter = f"(member={user_dn})"
+        entries = self.ldap.search(base_dn=f"ou=roles,{self.base_dn}", search_filter=search_filter)
+        roles = []
+        for entry in entries:
+            if hasattr(entry, "cn"):
+                roles.append(entry.cn.value)
+        return {"roles": roles}
+
+
+    def remove_role_from_user(self, email: str, role_type: str, role_name: str, area: Optional[str] = None) -> bool:
+        user_dn = self._find_user_dn(email)
+        if not user_dn:
+            raise Exception(f"User not found: {email}")
+        group_dn = self._get_role_group_dn(role_type, role_name, area)
+        entries = self.ldap.search(base_dn=group_dn, search_filter="(objectClass=groupOfNames)", search_scope='BASE')
+        if entries:
+            group_entry = entries[0]
+            members = set(group_entry.member.values) if hasattr(group_entry, 'member') else set()
+            if user_dn in members:
+                members.remove(user_dn)
+                self.ldap.modify_entry(group_dn, {"member": list(members)})
+                return True
+        return False
+
+    
+    def _get_role_group_dn(self, role_type: str, role_name:str, area: Optional[str] = None) -> str:
+        if role_type == "rol_global":
+            group_cn = f"{role_name}_global"
+        elif role_type == "rol_local" and area:
+            group_cn = f"{role_name}_{area.lower()}"
+        else:
+            raise Exception ("Invalid role type or missing area for local role")
+        return f"cn={group_cn},ou=roles,{self.base_dn}"
+    
+    def _ensure_role_group(self, group_dn:str):
+        if not self.ldap.entry_exists(group_dn):
+            roles_ou_dn = f"ou=roles, {self.base_dn}"
+            if not self.ldap.entry_exists(roles_ou_dn):
+                self.ldap.create_ou(roles_ou_dn)
+            
+            cn = group_dn.split(',')[0].split('=')[1]
+            self.ldap.create_entry(
+                group_dn,
+                {
+                    "objectClass": ["groupOfNames", "top"],
+                    "cn": cn,
+                    "member": []
                 }
-            
-            global_roles = self._get_user_roles(user_dn, "rol_global")
-            local_roles =self._get_user_roles(user_dn, "rol_local")
-
-            return {
-                "rol_global": global_roles,
-                "rol_local": local_roles
-
-            }
-        except Exception as e:
-            logger.error(f"Error getting roles for user {email}: {e}")
-            raise
-
-
-    def remove_role_from_user(self, email: str, role_type: str, role_name: str) -> bool:
-        try:
-            user_dn = self._find_user_dn(email)
-            if not user_dn:
-                raise Exception(f"User not found: {email}")
-            
-            current_roles = self._get_user_roles(user_dn, role_type)
-
-            if role_name not in current_roles:
-                logger.info(f"Role {role_name} does not exist for user {user_dn}")
-                return False
-            
-            current_roles.remove(role_name)
-
-            changes = {role_type: (MODIFY_REPLACE, current_roles)}
-            self.ldap.modify_entry(user_dn, changes)
-
-            logger.success(f"Role {role_name} removed from user {user_dn}")
-            return True
-        except Exception as e:
-            logger.error(f"Error removing role {role_name} from user {email}: {e}")
-            raise
+            )
