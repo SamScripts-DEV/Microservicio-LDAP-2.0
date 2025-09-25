@@ -111,7 +111,7 @@ class RoleService:
 
     def _assign_role_to_user(self, user_dn: str, role_type: str, role_name: str, area: Optional[str] = None):
         group_dn = self._get_role_group_dn(role_type, role_name, area)
-        self._ensure_role_group(group_dn)
+        self._ensure_role_group(group_dn, first_member_dn=user_dn)
 
         entries = self.ldap.search(base_dn=group_dn, search_filter="(objectClass=groupOfNames)", search_scope='BASE')
         if entries:
@@ -171,25 +171,26 @@ class RoleService:
     
     def _get_role_group_dn(self, role_type: str, role_name:str, area: Optional[str] = None) -> str:
         if role_type == "rol_global":
-            group_cn = f"{role_name}_global"
+            group_cn = f"{role_name.lower()}_global"
         elif role_type == "rol_local" and area:
-            group_cn = f"{role_name}_{area.lower()}"
+            group_cn = f"{role_name.lower()}_{area.lower()}"
         else:
             raise Exception ("Invalid role type or missing area for local role")
         return f"cn={group_cn},ou=roles,{self.base_dn}"
     
-    def _ensure_role_group(self, group_dn:str):
+    def _ensure_role_group(self, group_dn:str, first_member_dn: Optional[str] = None):
         if not self.ldap.entry_exists(group_dn):
             roles_ou_dn = f"ou=roles,{self.base_dn}"
             if not self.ldap.entry_exists(roles_ou_dn):
                 self.ldap.create_ou(roles_ou_dn)
             
             cn = group_dn.split(',')[0].split('=')[1]
-            self.ldap.create_entry(
-                group_dn,
-                {
-                    "objectClass": ["groupOfNames", "top"],
-                    "cn": cn,
-                    "member": []
-                }
-            )
+            attrs = {
+                "objectClass": ["groupOfNames", "top"],
+                "cn": cn,
+            }
+            if first_member_dn:
+                attrs["member"] = [first_member_dn]
+            else:
+                raise Exception("First member DN is required to create a new role group")
+            self.ldap.create_entry(group_dn, attrs)
