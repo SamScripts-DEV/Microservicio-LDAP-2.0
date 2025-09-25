@@ -1,44 +1,27 @@
-# Usar imagen base oficial de Python
-FROM python:3.11-slim
+# Imagen base sin actualizaciones del sistema
+FROM python:3.12-slim-bookworm
 
-# Establecer variables de entorno
+# Variables de entorno básicas
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
 
-# Crear directorio de trabajo
+# Directorio de trabajo
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias para LDAP
-RUN apt-get update && apt-get install -y \
-    libldap2-dev \
-    libsasl2-dev \
-    libssl-dev \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copiar requirements.txt primero (para aprovechar cache de Docker)
+# Copiar requirements e instalar dependencias Python
 COPY requirements.txt .
-
-# Instalar dependencias de Python
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código fuente
+# Copiar código fuente
 COPY . .
 
-# Crear usuario no-root para seguridad
-RUN adduser --disabled-password --gecos '' --uid 1000 microservice && \
-    chown -R microservice:microservice /app
-USER microservice
+# Crear usuario no-root simple (sin apt-get)
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
-# Exponer el puerto
+# Exponer puerto
 EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v2/ldap/health || exit 1
 
 # Comando de inicio
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

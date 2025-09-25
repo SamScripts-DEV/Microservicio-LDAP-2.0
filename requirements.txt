@@ -1,6 +1,10 @@
-fastapi
-uvicorn
-ldap3
-python-dotenv
-pyjwt
-loguru
+# Dependencias principales con versiones fijas por seguridad
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+ldap3==2.9.1
+python-dotenv==1.0.0
+pyjwt==2.8.0
+loguru==0.7.2
+
+# Dependencias de seguridad adicionales
+cryptography==41.0.7

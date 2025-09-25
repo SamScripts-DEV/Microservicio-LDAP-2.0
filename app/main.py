@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.routes.users import router as users_router
+from app.routes.roles import router as roles_router
 from app.middleware.jwt_middleware import decrypt_jwt_middleware
 
 app = FastAPI(
@@ -11,7 +12,10 @@ app = FastAPI(
 
 app.middleware("http")(decrypt_jwt_middleware)
 
+
+
 app.include_router(users_router, prefix="/api/v2/ldap", tags=["Users"])
+app.include_router(roles_router, prefix="/api/v2/ldap", tags=["Roles"])
 
 @app.get("/")
 def root():
