@@ -180,7 +180,7 @@ class RoleService:
     
     def _ensure_role_group(self, group_dn:str):
         if not self.ldap.entry_exists(group_dn):
-            roles_ou_dn = f"ou=roles, {self.base_dn}"
+            roles_ou_dn = f"ou=roles,{self.base_dn}"
             if not self.ldap.entry_exists(roles_ou_dn):
                 self.ldap.create_ou(roles_ou_dn)
             
