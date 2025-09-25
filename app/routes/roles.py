@@ -15,6 +15,9 @@ async def assign_roles(role_assignment: RoleAssignment):
         if not role_assignment.users:
             raise HTTPException(status_code=400, detail="At least one user must be provided")
         
+        if role_assignment.rol_local and not role_assignment.area:
+            raise HTTPException(status_code=400, detail="Area must be provided for local roles")
+        
         result = role_service.assign_roles(role_assignment)
         return result
         

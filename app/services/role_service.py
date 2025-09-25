@@ -25,6 +25,22 @@ class RoleService:
                         })
                         continue
 
+                    if role_assigment.rol_local:
+                        if not role_assigment.area:
+                            results.append({
+                                "email": email,
+                                "success": False,
+                                "message": "Area is required for local roles"
+                            })
+                            continue
+
+                        if not self._validate_user_area(user_dn, role_assigment.area):
+                            results.append({
+                                "email": email,
+                                "success": False,
+                                "message": f"User does not belong to area {role_assigment.area}"
+                            })
+
                     if role_assigment.rol_global:
                         self._assign_role_to_user(user_dn, "rol_global", role_assigment.rol_global)
 
@@ -53,7 +69,25 @@ class RoleService:
             logger.error(f"Error in role assignment: {e}")
             raise
 
+    def _validate_user_area(self, user_dn: str, required_area: str) -> bool:
+        try:
+            search_filter = "(objectClass=*)"
+            entries = self.ldap.search(base_dn=user_dn, search_filter=search_filter)
+            if entries and hasattr(entries[0], "physicalDeliveryOfficeName"):
+                user_area = getattr(entries[0], "physicalDeliveryOfficeName")
+                if hasattr(user_area, 'value'):
+                    user_area_value = user_area.value
+                else:
+                    user_area_value = str(user_area)
+                
+                return user_area_value.lower() == required_area.lower()
+            return False
+        except Exception as e:
+            logger.error(f"Error validating user area for {user_dn}: {e}")
+            return False
+                
     
+
     def _find_user_dn(self, email:str) -> str | None:
         try: 
             search_filter = f"(uid={email})"
