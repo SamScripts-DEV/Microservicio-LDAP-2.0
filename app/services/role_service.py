@@ -3,6 +3,7 @@ from app.models.role import RoleAssignment
 from loguru import logger
 from typing import Optional, Dict, Any, List
 from ldap3 import MODIFY_ADD, MODIFY_REPLACE, BASE
+import re
 
 class RoleService:
     def __init__(self):
@@ -25,7 +26,7 @@ class RoleService:
                         })
                         continue
 
-                    if role_assigment.rol_local:
+                    if role_assigment.role_local:
                         if not role_assigment.area:
                             results.append({
                                 "email": email,
@@ -41,11 +42,11 @@ class RoleService:
                                 "message": f"User does not belong to area {role_assigment.area}"
                             })
 
-                    if role_assigment.rol_global:
-                        self._assign_role_to_user(user_dn, "rol_global", role_assigment.rol_global)
+                    if role_assigment.role_global:
+                        self._assign_role_to_user(user_dn, "role_global", role_assigment.role_global)
 
-                    if role_assigment.rol_local:
-                        self._assign_role_to_user(user_dn, "rol_local", role_assigment.rol_local, area=role_assigment.area)
+                    if role_assigment.role_local:
+                        self._assign_role_to_user(user_dn, "role_local", role_assigment.role_local, area=role_assigment.area)
 
                     results.append({
                         "email": email,
@@ -68,13 +69,6 @@ class RoleService:
         except Exception as e:
             logger.error(f"Error in role assignment: {e}")
             raise
-
-
-    
-
-
-
-
 
 
     def _validate_user_area(self, user_dn: str, required_area: str) -> bool:
@@ -170,10 +164,12 @@ class RoleService:
 
     
     def _get_role_group_dn(self, role_type: str, role_name:str, area: Optional[str] = None) -> str:
-        if role_type == "rol_global":
-            group_cn = f"{role_name.lower()}_global"
-        elif role_type == "rol_local" and area:
-            group_cn = f"{role_name.lower()}_{area.lower()}"
+        role_name_norm = normalize_name(role_name)
+        if role_type == "role_global":
+            group_cn = f"{role_name_norm}_global"
+        elif role_type == "role_local" and area:
+            area_norm = normalize_name(area)
+            group_cn = f"{role_name_norm}_{area_norm}"
         else:
             raise Exception ("Invalid role type or missing area for local role")
         return f"cn={group_cn},ou=roles,{self.base_dn}"
@@ -194,3 +190,13 @@ class RoleService:
             else:
                 raise Exception("First member DN is required to create a new role group")
             self.ldap.create_entry(group_dn, attrs)
+
+
+
+
+
+def normalize_name(name:str) -> str:
+    name = name.lower()
+    name = re.sub(r"[ /]+", "_", name)
+    name = re.sub(r"[^a-z0-9_]", "", name)
+    return name

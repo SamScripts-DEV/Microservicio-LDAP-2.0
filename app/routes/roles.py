@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from app.models.role import RoleAssignment
 from app.services.role_service import RoleService
 from loguru import logger
+from typing import Optional
 
 router = APIRouter()
 role_service = RoleService()
@@ -9,13 +10,13 @@ role_service = RoleService()
 @router.post("/assign-roles")
 async def assign_roles(role_assignment: RoleAssignment):
     try:
-        if not role_assignment.rol_global and not role_assignment.rol_local:
+        if not role_assignment.role_global and not role_assignment.role_local:
             raise HTTPException(status_code=400, detail="At least one role type must be provided")
         
         if not role_assignment.users:
             raise HTTPException(status_code=400, detail="At least one user must be provided")
         
-        if role_assignment.rol_local and not role_assignment.area:
+        if role_assignment.role_local and not role_assignment.area:
             raise HTTPException(status_code=400, detail="Area must be provided for local roles")
         
         result = role_service.assign_roles(role_assignment)
@@ -27,10 +28,10 @@ async def assign_roles(role_assignment: RoleAssignment):
 
 
 @router.delete("/remove-role/{email}")
-async def remove_role(email: str, role_type: str, role_name: str):
+async def remove_role(email: str, role_type: str, role_name: str, area: Optional[str] = Query(None)):
 
     try:
-        if role_type not in ["rol_global", "rol_local"]:
+        if role_type not in ["role_global", "role_local"]:
             raise HTTPException(status_code=400, detail="Invalid role type")
         
         success = role_service.remove_role_from_user(email, role_type, role_name)
