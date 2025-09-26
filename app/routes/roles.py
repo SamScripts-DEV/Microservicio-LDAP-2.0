@@ -34,7 +34,7 @@ async def remove_role(email: str, role_type: str, role_name: str, area: Optional
         if role_type not in ["role_global", "role_local"]:
             raise HTTPException(status_code=400, detail="Invalid role type")
         
-        success = role_service.remove_role_from_user(email, role_type, role_name)
+        success = role_service.remove_role_from_user(email, role_type, role_name, area)
         return {"success": success}
         
     except Exception as e:
