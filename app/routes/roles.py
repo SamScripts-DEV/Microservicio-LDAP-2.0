@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from app.middleware.decrypt_jwt import decrypt_request
 from app.models.role import RoleAssignment
 from app.services.role_service import RoleService
 from loguru import logger
@@ -8,7 +9,10 @@ router = APIRouter()
 role_service = RoleService()
 
 @router.post("/assign-roles")
-async def assign_roles(role_assignment: RoleAssignment):
+async def assign_roles(payload: dict = Depends(decrypt_request)):
+
+    role_assignment = RoleAssignment(**payload)
+
     try:
         if not role_assignment.role_global and not role_assignment.role_local:
             raise HTTPException(status_code=400, detail="At least one role type must be provided")
@@ -39,4 +43,14 @@ async def remove_role(email: str, role_type: str, role_name: str, area: Optional
         
     except Exception as e:
         logger.error(f"Error removing role: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@router.delete("/delete-role-group")
+async def delete_role_group(role_type: str, role_name: str, area: Optional[str] = None):
+    try:
+        success = role_service.delete_role_group(role_type, role_name, area)
+        return {"success": success}
+    except Exception as e:
+        logger.error(f"Error deleting role group: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from app.middleware.decrypt_jwt import decrypt_request
 from app.models.user import (
     User,
     UserResponse,
@@ -14,7 +15,8 @@ router = APIRouter()
 user_service = UserService()
 
 @router.post("/create-user", response_model=ApiResponse, summary="Crear un nuevo usuario en LDAP")
-def create_user_route(user: User):   
+def create_user_route(payload: dict = Depends(decrypt_request)):   
+    user = User(**payload)
     try:
         dn = user_service.create_user(user)
         return ApiResponse(
@@ -40,7 +42,8 @@ def get_user_route(email: str):
         raise HTTPException(status_code=400, detail=str(e))
     
 @router.patch("/users/{email}", response_model=ApiResponse, summary="Actualizar usuario")
-def update_user_route(email: str, user_data: UpdatedUserRequest):
+def update_user_route(email: str, payload: dict = Depends(decrypt_request)):
+    user_data = UpdatedUserRequest(**payload)
     try:
         updated_data = {k: v for k, v in user_data.dict().items() if v is not None}
 

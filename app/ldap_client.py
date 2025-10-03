@@ -1,4 +1,4 @@
-from ldap3 import Server, Connection, ALL
+from ldap3 import Server, Connection, ALL, MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE
 from app.config import settings
 from loguru import logger
 
@@ -51,7 +51,7 @@ class LDAPClient:
     def search(self, base_dn: str, search_filter: str, search_scope='SUBTREE') -> list:
         try:
             self.ensure_connection()
-            self.conn.search(search_base=base_dn, search_filter=search_filter, search_scope='SUBTREE')
+            self.conn.search(search_base=base_dn, search_filter=search_filter, search_scope='SUBTREE', attributes=['*'])
             return self.conn.entries
         except Exception as e:
             logger.error(f"LDAP search error: base={base_dn}, filter={search_filter}, error={e}")
@@ -167,6 +167,39 @@ class LDAPClient:
             return False
     
 
+
+
+    def add_group_member(self, group_dn: str, member_dn: str):
+        self.ensure_connection()
+        logger.debug(f"Adding member {member_dn} to group {group_dn}")
+        self.conn.modify(group_dn, {"member": [(MODIFY_ADD, [member_dn])]})
+        logger.debug(f"LDAP modify result: {self.conn.result}")
+        if not self.conn.result['description'] == 'success':
+            raise Exception(f"Error adding member: {self.conn.result}")
+
+    def remove_group_member(self, group_dn: str, member_dn: str):
+        self.ensure_connection()
+        logger.debug(f"Removing member {member_dn} from group {group_dn}")
+        self.conn.modify(group_dn, {"member": [(MODIFY_DELETE, [member_dn])]})
+        logger.debug(f"LDAP modify result: {self.conn.result}")
+        if not self.conn.result['description'] == 'success':
+            raise Exception(f"Error removing member: {self.conn.result}")
+
+    def replace_group_members(self, group_dn: str, members: list):
+        self.ensure_connection()
+        logger.debug(f"Replacing members in group {group_dn} with {members}")
+        self.conn.modify(group_dn, {"member": [(MODIFY_REPLACE, members)]})
+        logger.debug(f"LDAP modify result: {self.conn.result}")
+        if not self.conn.result['description'] == 'success':
+            raise Exception(f"Error replacing members: {self.conn.result}")
+
+    def clear_group_members(self, group_dn: str):
+        self.ensure_connection()
+        logger.debug(f"Clearing all members from group {group_dn}")
+        self.conn.modify(group_dn, {"member": [(MODIFY_DELETE, [])]})
+        logger.debug(f"LDAP modify result: {self.conn.result}")
+        if not self.conn.result['description'] == 'success':
+            raise Exception(f"Error clearing members: {self.conn.result}")
 
 
 ldap_client = LDAPClient()

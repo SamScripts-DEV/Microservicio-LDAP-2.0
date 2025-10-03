@@ -113,7 +113,7 @@ class RoleService:
             members = set(group_entry.member.values) if hasattr(group_entry, 'member') else set()
             if user_dn not in members:
                 members.add(user_dn)
-                self.ldap.modify_entry(group_dn, {"member": list(members)})
+                self.ldap.add_group_member(group_dn, user_dn)
 
 
     
@@ -149,17 +149,30 @@ class RoleService:
 
     def remove_role_from_user(self, email: str, role_type: str, role_name: str, area: Optional[str] = None) -> bool:
         user_dn = self._find_user_dn(email)
+        
         if not user_dn:
             raise Exception(f"User not found: {email}")
         group_dn = self._get_role_group_dn(role_type, role_name, area)
         entries = self.ldap.search(base_dn=group_dn, search_filter="(objectClass=groupOfNames)", search_scope='BASE')
+        
         if entries:
             group_entry = entries[0]
             members = set(group_entry.member.values) if hasattr(group_entry, 'member') else set()
+            logger.info(f"[REMOVE] Antes de eliminar: miembros en {group_dn}: {members}")
+
             if user_dn in members:
+                if len(members) == 1:
+                    raise Exception("El grupo debe tener al menos un miembro activo. Si desea eliminar todos los miembros, considere eliminar el rol completo.")
+                
                 members.remove(user_dn)
-                self.ldap.modify_entry(group_dn, {"member": list(members)})
+                logger.info(f"[REMOVE] Después de eliminar: miembros en {group_dn}: {members}")
+                self.ldap.remove_group_member(group_dn, user_dn)
+                logger.info(f"[REMOVE] Usuario {user_dn} removido de {group_dn}")
                 return True
+            else:
+                logger.warning(f"[REMOVE] Usuario {user_dn} no es miembro de {group_dn}")
+        else:
+            logger.warning(f"[REMOVE] Grupo no encontrado: {group_dn}")
         return False
 
     
@@ -190,6 +203,21 @@ class RoleService:
             else:
                 raise Exception("First member DN is required to create a new role group")
             self.ldap.create_entry(group_dn, attrs)
+
+
+    def delete_role_group(self, role_type: str, role_name: str, area: Optional[str] = None) -> bool:
+        group_dn = self._get_role_group_dn(role_type, role_name, area)
+        
+        if self.ldap.entry_exists(group_dn):
+            self.ldap.delete_entry(group_dn)
+            logger.info(f"Role group deleted: {group_dn}")
+            return True
+        
+        else:
+            logger.warning(f"Role group not found for deletion: {group_dn}")
+            return False
+
+
 
 
 
