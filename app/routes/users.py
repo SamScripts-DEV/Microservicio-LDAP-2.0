@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import JSONResponse
 from app.middleware.decrypt_jwt import decrypt_request
 from app.models.user import (
     User,
@@ -100,20 +101,27 @@ def authenticate_user_route(auth_request: AuthRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/health", response_model=HealthCheckResponse, summary = "Health Check")
+@router.get("/health", response_model=HealthCheckResponse, summary="Health Check")
 def health_check_route():
     try:
         ldap_status = user_service.ldap.test_connection()
-        return HealthCheckResponse(
-            status="healthy" if ldap_status else "unhealthy",
-            ldap_connection=ldap_status
+        status_str = "healthy" if ldap_status else "unhealthy"
+        http_status = status.HTTP_200_OK if ldap_status else status.HTTP_503_SERVICE_UNAVAILABLE
+        return JSONResponse(
+            status_code=http_status,
+            content=HealthCheckResponse(
+                status=status_str,
+                ldap_connection=ldap_status
+            ).dict()
         )
     except Exception as e:
-        return HealthCheckResponse(
-            status="unhealthy",
-            ldap_connection=False,
-            error=str(e)
-        )
-        
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=HealthCheckResponse(
+                status="unhealthy",
+                ldap_connection=False,
+                error=str(e)
+            ).dict()
+        )        
 
     
