@@ -10,7 +10,7 @@ app = FastAPI(
 
 )
 
-app.middleware("http")(decrypt_jwt_middleware)
+
 
 
 
