@@ -17,7 +17,12 @@ user_service = UserService()
 
 @router.post("/create-user", response_model=ApiResponse, summary="Crear un nuevo usuario en LDAP")
 def create_user_route(payload: dict = Depends(decrypt_request)):   
-    user = User(**payload)
+    print("Payload recibido en endpoint:", payload)
+    try:
+        user = User(**payload)
+    except Exception as e:
+        print("Error validando User:", e)
+        raise HTTPException(status_code=422, detail=f"Error validando User: {str(e)}")
     try:
         dn = user_service.create_user(user)
         return ApiResponse(
