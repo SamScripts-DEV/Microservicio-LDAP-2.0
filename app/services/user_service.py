@@ -2,12 +2,13 @@ from app.models.user import User
 from app.ldap_client import LDAPClient
 from loguru import logger
 from typing import Optional, Dict, Any
+from app.config import settings
 
 
 class UserService:
     def __init__(self):
         self.ldap = LDAPClient()
-        self.base_dn = "dc=sonda,dc=org"
+        self.base_dn = settings.BASE_DN
         self.users_ou = "ou=users"
 
 
