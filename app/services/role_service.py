@@ -4,11 +4,12 @@ from loguru import logger
 from typing import Optional, Dict, Any, List
 from ldap3 import MODIFY_ADD, MODIFY_REPLACE, BASE
 import re
+from app.config import settings
 
 class RoleService:
     def __init__(self):
         self.ldap = LDAPClient()
-        self.base_dn = "dc=sonda,dc=org"
+        self.base_dn = settings.BASE_DN
     
     def assign_roles(self, role_assigment: RoleAssignment) -> Dict[str, Any]:
         try:
@@ -114,6 +115,39 @@ class RoleService:
             if user_dn not in members:
                 members.add(user_dn)
                 self.ldap.add_group_member(group_dn, user_dn)
+        
+        # SOLO para role_local
+        if role_type == "role_local":
+            logger.info(f"[BC] Intentando agregar businessCategory para role_local: {role_name}")
+            try:
+                current_categories = self._get_user_business_categories(user_dn)
+                logger.info(f"[BC] Categorías actuales: {current_categories}")
+                
+                if role_name not in current_categories: 
+                    current_categories.append(role_name)
+                    logger.info(f"[BC] Nuevas categorías: {current_categories}")
+
+                    changes = {"businessCategory": current_categories}
+                    logger.info(f"[BC] Ejecutando modify_entry en {user_dn} con {changes}")
+                    self.ldap.modify_entry(user_dn, changes)
+                    logger.success(f"[BC] ✓ businessCategory actualizado exitosamente")
+                else:
+                    logger.info(f"[BC] Role '{role_name}' ya existe en businessCategory")
+            except Exception as e:
+                logger.error(f"[BC] ✗ Error actualizando businessCategory: {e}")
+                import traceback
+                logger.error(f"[BC] Traceback: {traceback.format_exc()}")
+    
+    def _get_user_business_categories(self, user_dn: str) -> List[str]:
+        try:
+            entries = self.ldap.search(user_dn, "(objectClass=*)", search_scope='BASE')
+            if entries and hasattr(entries[0], "businessCategory"):
+                return list(entries[0].businessCategory.values)
+            return []
+        except Exception as e:
+            logger.warning(f"Could not get businessCategory for {user_dn}: {e}")
+            return []
+
 
 
     
@@ -168,6 +202,18 @@ class RoleService:
                 logger.info(f"[REMOVE] Después de eliminar: miembros en {group_dn}: {members}")
                 self.ldap.remove_group_member(group_dn, user_dn)
                 logger.info(f"[REMOVE] Usuario {user_dn} removido de {group_dn}")
+
+                if role_type == "role_local":
+                    try:
+                        current_categories = self._get_user_business_categories(user_dn)
+                        if role_name in current_categories:
+                            current_categories.remove(role_name)
+                            changes = {"businessCategory": current_categories if current_categories else []}
+                            self.ldap.modify_entry(user_dn, changes)
+                            logger.success(f"[BC] Removed '{role_name}' from businessCategory of {user_dn}")
+                    except Exception as e:
+                        logger.error(f"[BC] Error removing businessCategory: {e}")
+
                 return True
             else:
                 logger.warning(f"[REMOVE] Usuario {user_dn} no es miembro de {group_dn}")
@@ -209,6 +255,28 @@ class RoleService:
         group_dn = self._get_role_group_dn(role_type, role_name, area)
         
         if self.ldap.entry_exists(group_dn):
+
+            if role_type == "role_local":
+                try:
+                    entries = self.ldap.search(base_dn=group_dn, search_filter="(objectClass=groupOfNames)", search_scope='BASE')
+                    if entries and hasattr(entries[0], 'member'):
+                        members = entries[0].member.values
+                        logger.info(f"[DELETE] Eliminando businessCategory '{role_name}' de {len(members)} usuarios")
+                        
+                        for user_dn in members:
+                            try:
+                                current_categories = self._get_user_business_categories(user_dn)
+                                if role_name in current_categories:
+                                    current_categories.remove(role_name)
+                                    changes = {"businessCategory": current_categories if current_categories else []}
+                                    self.ldap.modify_entry(user_dn, changes)
+                                    logger.info(f"[BC] Removed '{role_name}' from {user_dn}")
+                            except Exception as e:
+                                logger.error(f"[BC] Error removing businessCategory from {user_dn}: {e}")
+                except Exception as e:
+                    logger.error(f"[DELETE] Error processing businessCategory cleanup: {e}")
+
+
             self.ldap.delete_entry(group_dn)
             logger.info(f"Role group deleted: {group_dn}")
             return True
@@ -223,7 +291,17 @@ class RoleService:
 
 
 
-def normalize_name(name:str) -> str:
+def normalize_name(name: str) -> str:
+    replacements = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u',
+        'ñ': 'n', 'Ñ': 'n',
+        'ü': 'u', 'Ü': 'u'
+    }
+
+    for old, new in replacements.items():
+        name = name.replace(old, new)
+    
     name = name.lower()
     name = re.sub(r"[ /]+", "_", name)
     name = re.sub(r"[^a-z0-9_]", "", name)
