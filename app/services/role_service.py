@@ -149,6 +149,52 @@ class RoleService:
             return []
 
 
+    def update_role_name(self, role_type: str, old_role_name: str, new_role_name: str, area: Optional[str] = None) -> bool:
+        try:
+            old_group_dn = self._get_role_group_dn(role_type, old_role_name, area)
+            new_group_dn = self._get_role_group_dn(role_type, new_role_name, area)
+
+            if not self.ldap.entry_exists(old_group_dn):
+                raise Exception(f"Role group not found: {old_group_dn}")
+            
+            if self.ldap.entry_exists(new_group_dn):
+                raise Exception(f"A role with name '{new_role_name}' already exists.")
+            
+            entries = self.ldap.search(base_dn=old_group_dn, search_filter="(objectClass=groupOfNames)", search_scope='BASE')
+            members = []
+            if entries and hasattr(entries[0], 'member'):
+                members = list(entries[0].member.values)
+
+            if role_type == "role_local" and members:
+                logger.info(f"[UPDATE] Actualizando businessCategory de {len(members)} usuarios")
+                for user_dn in members:
+                    try:
+                        current_categories = self._get_user_business_categories(user_dn)
+                        if old_role_name in current_categories:
+                            current_categories.remove(old_role_name)
+                            current_categories.append(new_role_name)
+                            changes = {"businessCategory": current_categories}
+                            self.ldap.modify_entry(user_dn, changes)
+                            logger.info(f"[BC] Updated '{old_role_name}' to '{new_role_name}' in businessCategory of {user_dn}")
+                    except Exception as e:
+                        logger.error(f"[BC] Error updating businessCategory for {user_dn}: {e}")
+            
+            new_cn = new_group_dn.split(',')[0].split('=')[1]
+            attrs = {
+                "objectClass": ["groupOfNames", "top"],
+                "cn": new_cn,
+                "member": members if members else [""]
+            }
+
+            self.ldap.create_entry(new_group_dn, attrs)
+            self.ldap.delete_entry(old_group_dn)
+
+            logger.success(f"[UPDATED] Role renamed from '{old_role_name}' to '{new_role_name}' successfully")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error updating role name: {e}")
+            raise
 
     
     def _get_user_roles(self, user_dn: str, role_type: str) -> List[str]:

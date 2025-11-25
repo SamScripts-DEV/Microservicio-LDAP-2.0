@@ -7,4 +7,10 @@ class RoleAssignment(BaseModel):
     area: Optional[str] = None
     users: List[str]
 
+class RoleUpdateRequest(BaseModel):
+    role_type: str
+    old_role_name: str
+    new_role_name: str
+    area: Optional[str] = None
+
 
